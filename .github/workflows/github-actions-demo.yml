@@ -12,67 +12,81 @@ jobs:
     steps:
       - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
 
-      - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
+      - run: echo "🪟 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
 
       - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
 
       - name: Check out repository code
         uses: actions/checkout@v6
 
-      - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
-
-      - run: echo "🖥️ The workflow is now ready to test your code on the runner."
-
       - name: List files in the repository
+        shell: pwsh
         run: |
-          ls -la "${{ github.workspace }}"
+          Get-ChildItem -Path $env:GITHUB_WORKSPACE
 
-      - name: Check docs folder
+      - name: Check docs folder and required files
+        shell: pwsh
         run: |
-          if [ ! -d "${{ github.workspace }}/docs" ]; then
-            echo "❌ ERROR: /docs folder does not exist."
-            exit 1
-          fi
+          $docsPath = Join-Path $env:GITHUB_WORKSPACE "docs"
 
-          echo "✅ /docs folder exists."
+          # Check that /docs exists
+          if (-not (Test-Path -Path $docsPath -PathType Container)) {
+              Write-Error "❌ ERROR: /docs folder does not exist."
+              exit 1
+          }
 
-      - name: Check for ERD image
-        run: |
-          if find "${{ github.workspace }}/docs" -maxdepth 1 -type f \
-            \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.svg" -o -iname "*.webp" \) \
-            | grep -q .; then
-            echo "✅ ERD image found."
-          else
-            echo "❌ ERROR: No ERD image found in /docs."
-            echo "Expected one of: .png, .jpg, .jpeg, .svg, .webp"
-            exit 1
-          fi
+          Write-Host "✅ /docs folder exists."
 
-      - name: Check for endpoint plan document
-        run: |
-          if find "${{ github.workspace }}/docs" -maxdepth 1 -type f \
-            \( -iname "*.md" -o -iname "*.pdf" -o -iname "*.docx" \) \
-            | grep -q .; then
-            echo "✅ Endpoint plan document found."
-          else
-            echo "❌ ERROR: No endpoint plan document found in /docs."
-            echo "Expected one of: .md, .pdf, .docx"
-            exit 1
-          fi
+          # Get files directly inside /docs
+          $files = Get-ChildItem -Path $docsPath -File
 
-      - name: Check for SQL script
-        run: |
-          if find "${{ github.workspace }}/docs" -maxdepth 1 -type f -iname "*.sql" | grep -q .; then
-            echo "✅ SQL script found."
-          else
-            echo "❌ ERROR: No SQL script found in /docs."
-            echo "Expected a .sql file."
-            exit 1
-          fi
+          # Check for ERD image
+          $erd = $files | Where-Object {
+              $_.Extension.ToLower() -in @(".png", ".jpg", ".jpeg", ".svg", ".webp")
+          }
+
+          if (-not $erd) {
+              Write-Error "❌ ERROR: No ERD image found in /docs."
+              Write-Error "Expected: .png, .jpg, .jpeg, .svg, or .webp"
+              exit 1
+          }
+
+          Write-Host "✅ ERD image found: $($erd.Name)"
+
+          # Check for endpoint plan document
+          $endpointPlan = $files | Where-Object {
+              $_.Extension.ToLower() -in @(".md", ".pdf", ".docx")
+          }
+
+          if (-not $endpointPlan) {
+              Write-Error "❌ ERROR: No endpoint plan document found in /docs."
+              Write-Error "Expected: .md, .pdf, or .docx"
+              exit 1
+          }
+
+          Write-Host "✅ Endpoint plan document found: $($endpointPlan.Name)"
+
+          # Check for SQL script
+          $sqlScript = $files | Where-Object {
+              $_.Extension.ToLower() -eq ".sql"
+          }
+
+          if (-not $sqlScript) {
+              Write-Error "❌ ERROR: No SQL script found in /docs."
+              Write-Error "Expected a .sql file."
+              exit 1
+          }
+
+          Write-Host "✅ SQL script found: $($sqlScript.Name)"
+
+          Write-Host ""
+          Write-Host "🎉 All required documentation has been found."
 
       - name: Show docs contents
+        shell: pwsh
         run: |
-          echo "📚 Contents of /docs:"
-          find "${{ github.workspace }}/docs" -maxdepth 1 -type f -print
+          Write-Host "📚 Contents of /docs:"
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE/docs" -File |
+            Select-Object -ExpandProperty FullName
 
       - run: echo "🍏 This job's status is ${{ job.status }}."
